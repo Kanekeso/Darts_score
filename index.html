@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f0f0f">
+<title>Darts Score Keeper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root {
+    width: 100%; min-height: 100vh; min-height: 100dvh;
+    background: linear-gradient(160deg, #0f0f0f 0%, #1a1a2e 50%, #16213e 100%);
+    font-family: 'DM Sans', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  input { font-family: inherit; }
+  button { -webkit-appearance: none; font-family: inherit; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.2/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useCallback } = React;
+
+/* ───────── constants ───────── */
+const SEGMENTS = [20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1];
+const CRICKET_NUMBERS = [20,19,18,17,16,15,"BULL"];
+const MULTIPLIERS = [
+  { label: "S", value: 1, color: "#e8e8e8" },
+  { label: "D", value: 2, color: "#f59e0b" },
+  { label: "T", value: 3, color: "#ef4444" },
+];
+
+/* ───────── helpers ───────── */
+const initCricketState = (n) =>
+  Array.from({ length: n }, () => ({
+    marks: { 20:0,19:0,18:0,17:0,16:0,15:0,BULL:0 },
+    points: 0,
+  }));
+
+const initX01State = (n, start) =>
+  Array.from({ length: n }, () => ({ score: start, history: [] }));
+
+const getFinishHint = (rem) => {
+  if (rem <= 0) return null;
+  if (rem === 50) return "D-BULL";
+  if (rem <= 40 && rem % 2 === 0) return "D" + (rem / 2);
+  if (rem <= 60 && rem % 3 === 0) return "T" + (rem / 3);
+  return null;
+};
+
+/* ─── shared styles ─── */
+const labelStyle = {
+  color:"rgba(255,255,255,0.4)", fontSize:11, letterSpacing:3,
+  textTransform:"uppercase", display:"block", marginBottom:8,
+};
+const pillBtn = {
+  padding:"10px 0", borderRadius:10, border:"none", cursor:"pointer",
+  fontSize:15, fontFamily:"'DM Sans', sans-serif", transition:"all 0.15s",
+};
+const gameContainer = {
+  minHeight:"100vh", minHeight:"100dvh",
+  background:"transparent",
+  fontFamily:"'DM Sans', sans-serif", padding:"20px 16px", maxWidth:520, margin:"0 auto",
+};
+const gameTitle = {
+  fontFamily:"'Bebas Neue', sans-serif", fontSize:28, color:"#f59e0b",
+  margin:0, letterSpacing:3,
+};
+const backBtn = {
+  background:"transparent", border:"1px solid rgba(255,255,255,0.1)",
+  borderRadius:8, padding:"6px 14px", color:"rgba(255,255,255,0.5)",
+  cursor:"pointer", fontSize:13,
+};
+const thStyle = {
+  padding:"10px 8px", fontSize:12, letterSpacing:1, textTransform:"uppercase",
+  borderBottom:"1px solid rgba(255,255,255,0.08)",
+};
+const tdStyle = {
+  padding:"8px", borderBottom:"1px solid rgba(255,255,255,0.05)",
+};
+
+/* ═══════════════════════════════════════
+   Setup Screen
+   ═══════════════════════════════════════ */
+function SetupScreen({ onStart }) {
+  const [game, setGame] = useState("501");
+  const [players, setPlayers] = useState(2);
+  const [names, setNames] = useState(["Player 1","Player 2","Player 3","Player 4"]);
+
+  const updateName = (i, v) => {
+    const c = [...names]; c[i] = v; setNames(c);
+  };
+
+  return (
+    <div style={{
+      minHeight:"100vh", minHeight:"100dvh", display:"flex", alignItems:"center", justifyContent:"center",
+      background:"transparent", fontFamily:"'DM Sans', sans-serif", padding:20,
+    }}>
+      <div style={{
+        background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)",
+        borderRadius:20, padding:"48px 32px", width:"100%", maxWidth:460,
+        backdropFilter:"blur(20px)",
+      }}>
+        <h1 style={{
+          fontFamily:"'Bebas Neue', sans-serif", fontSize:52, color:"#f59e0b",
+          textAlign:"center", margin:0, letterSpacing:4, lineHeight:1,
+        }}>DARTS</h1>
+        <p style={{
+          textAlign:"center", color:"rgba(255,255,255,0.35)", fontSize:11,
+          letterSpacing:6, textTransform:"uppercase", marginTop:4, marginBottom:36,
+        }}>Score Keeper</p>
+
+        <label style={labelStyle}>GAME MODE</label>
+        <div style={{ display:"flex", gap:8, marginBottom:24 }}>
+          {["301","501","Cricket"].map(g => (
+            <button key={g} onClick={() => setGame(g)} style={{
+              ...pillBtn, flex:1,
+              background: game===g ? "#f59e0b" : "rgba(255,255,255,0.06)",
+              color: game===g ? "#000" : "rgba(255,255,255,0.5)",
+              fontWeight: game===g ? 700 : 500,
+            }}>{g}</button>
+          ))}
+        </div>
+
+        <label style={labelStyle}>PLAYERS</label>
+        <div style={{ display:"flex", gap:8, marginBottom:24 }}>
+          {[2,3,4].map(n => (
+            <button key={n} onClick={() => setPlayers(n)} style={{
+              ...pillBtn, width:56,
+              background: players===n ? "#f59e0b" : "rgba(255,255,255,0.06)",
+              color: players===n ? "#000" : "rgba(255,255,255,0.5)",
+              fontWeight: players===n ? 700 : 500,
+            }}>{n}</button>
+          ))}
+        </div>
+
+        <label style={labelStyle}>PLAYER NAMES</label>
+        <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:32 }}>
+          {Array.from({ length: players }, (_, i) => (
+            <input key={i} value={names[i]} onChange={e => updateName(i, e.target.value)}
+              style={{
+                background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)",
+                borderRadius:10, padding:"10px 14px", color:"#fff", fontSize:16,
+                outline:"none", fontFamily:"inherit",
+              }}
+              placeholder={"Player " + (i+1)}
+            />
+          ))}
+        </div>
+
+        <button onClick={() => onStart({ game, players, names: names.slice(0, players) })}
+          style={{
+            width:"100%", padding:"14px 0", borderRadius:12, border:"none",
+            background:"linear-gradient(135deg, #f59e0b, #d97706)", color:"#000",
+            fontWeight:700, cursor:"pointer", letterSpacing:1,
+            fontFamily:"'Bebas Neue', sans-serif", fontSize:22,
+          }}>
+          START GAME
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
+   X01 Game (301 / 501)
+   ═══════════════════════════════════════ */
+function X01Game({ startScore, names, onBack }) {
+  const n = names.length;
+  const [state, setState] = useState(initX01State(n, startScore));
+  const [turn, setTurn] = useState(0);
+  const [roundDarts, setRoundDarts] = useState([]);
+  const [selNum, setSelNum] = useState(null);
+  const [winner, setWinner] = useState(null);
+  const [globalHistory, setGlobalHistory] = useState([]);
+
+  const currentScore = state[turn].score;
+  const roundTotal = roundDarts.reduce((s, d) => s + d.value, 0);
+
+  const addDart = useCallback((value, label, mult) => {
+    if (roundDarts.length >= 3 || winner !== null) return;
+    const tentative = currentScore - roundTotal - value;
+    if (tentative < 0) return;
+    if (tentative === 1) return;
+    if (tentative === 0 && mult !== "D" && mult !== "T") return;
+    setRoundDarts(prev => [...prev, { value, label, mult }]);
+  }, [roundDarts, currentScore, roundTotal, winner]);
+
+  const undoLastDart = () => {
+    if (roundDarts.length > 0) setRoundDarts(prev => prev.slice(0, -1));
+  };
+
+  const confirmRound = () => {
+    const total = roundDarts.reduce((s, d) => s + d.value, 0);
+    const newScore = currentScore - total;
+    setGlobalHistory(prev => [...prev, { player: turn, prevScore: currentScore, darts: [...roundDarts], total }]);
+    setState(prev => {
+      const c = [...prev];
+      c[turn] = { ...c[turn], score: newScore, history: [...c[turn].history, { darts: [...roundDarts], total }] };
+      return c;
+    });
+    if (newScore === 0) { setWinner(turn); } else { setTurn((turn + 1) % n); }
+    setRoundDarts([]); setSelNum(null);
+  };
+
+  const bust = () => {
+    setGlobalHistory(prev => [...prev, { player: turn, prevScore: currentScore, darts: [...roundDarts], total: 0, bust: true }]);
+    setState(prev => {
+      const c = [...prev];
+      c[turn] = { ...c[turn], history: [...c[turn].history, { darts: [...roundDarts], total: 0, bust: true }] };
+      return c;
+    });
+    setTurn((turn + 1) % n); setRoundDarts([]); setSelNum(null);
+  };
+
+  const undoRound = () => {
+    if (globalHistory.length === 0) return;
+    const last = globalHistory[globalHistory.length - 1];
+    setGlobalHistory(prev => prev.slice(0, -1));
+    setState(prev => {
+      const c = [...prev];
+      c[last.player] = { ...c[last.player], score: last.prevScore, history: c[last.player].history.slice(0, -1) };
+      return c;
+    });
+    setTurn(last.player); setRoundDarts([]); setSelNum(null); setWinner(null);
+  };
+
+  const rem = currentScore - roundTotal;
+  const finishHint = getFinishHint(rem);
+
+  return (
+    <div style={gameContainer}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+        <button onClick={onBack} style={backBtn}>← Back</button>
+        <h2 style={gameTitle}>{startScore}</h2>
+        <button onClick={undoRound} disabled={globalHistory.length===0}
+          style={{ ...backBtn, opacity: globalHistory.length===0 ? 0.3 : 1 }}>↩ Undo</button>
+      </div>
+
+      {/* Scoreboard */}
+      <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
+        {names.map((name, i) => (
+          <div key={i} style={{
+            flex:1, minWidth:80, padding:"12px 8px", borderRadius:14, textAlign:"center",
+            background: turn===i ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.04)",
+            border: turn===i ? "2px solid #f59e0b" : "2px solid transparent",
+            position:"relative",
+          }}>
+            {winner===i && <div style={{
+              position:"absolute", top:-10, left:"50%", transform:"translateX(-50%)",
+              background:"#f59e0b", color:"#000", fontSize:10, fontWeight:700,
+              padding:"2px 10px", borderRadius:8,
+            }}>WINNER!</div>}
+            <div style={{ color:"rgba(255,255,255,0.5)", fontSize:11, marginBottom:4 }}>{name}</div>
+            <div style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:36, color:"#fff", lineHeight:1 }}>{state[i].score}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Current Round */}
+      <div style={{
+        background:"rgba(255,255,255,0.04)", borderRadius:14, padding:"12px 16px",
+        marginBottom:16, border:"1px solid rgba(255,255,255,0.08)",
+      }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+          <span style={{ color:"#f59e0b", fontSize:13, fontWeight:600 }}>
+            {names[turn]}'s Turn — Dart {Math.min(roundDarts.length + 1, 3)}/3
+          </span>
+          <span style={{ color:"rgba(255,255,255,0.4)", fontSize:12 }}>Round: -{roundTotal}</span>
+        </div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+          {roundDarts.map((d, i) => (
+            <div key={i} style={{
+              background:"rgba(245,158,11,0.2)", borderRadius:8, padding:"6px 12px",
+              color:"#f59e0b", fontSize:14, fontWeight:600,
+            }}>{d.label} ({d.value})</div>
+          ))}
+          {roundDarts.length < 3 && !winner && (
+            <div style={{
+              background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"6px 12px",
+              color:"rgba(255,255,255,0.2)", fontSize:14, border:"1px dashed rgba(255,255,255,0.1)",
+            }}>...</div>
+          )}
+        </div>
+        <div style={{ marginTop:10, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+          <span style={{ fontFamily:"'Bebas Neue', sans-serif", fontSize:20, color:"#fff" }}>Remaining: {rem}</span>
+          {finishHint && (
+            <span style={{
+              fontSize:11, color:"#10b981", background:"rgba(16,185,129,0.12)",
+              borderRadius:6, padding:"3px 8px", fontWeight:600,
+            }}>Finish: {finishHint}</span>
+          )}
+          {rem <= 1 && rem > 0 && (
+            <span style={{
+              fontSize:11, color:"#ef4444", background:"rgba(239,68,68,0.12)",
+              borderRadius:6, padding:"3px 8px", fontWeight:600,
+            }}>No valid finish — BUST</span>
+          )}
+        </div>
+      </div>
+
+      {winner === null && <>
+        {/* Number Selector */}
+        <div style={{ marginBottom:12 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(5, 1fr)", gap:6 }}>
+            {SEGMENTS.map(num => (
+              <button key={num} onClick={() => setSelNum(num)} style={{
+                padding:"10px 0", borderRadius:10, border:"none", cursor:"pointer",
+                fontFamily:"'Bebas Neue', sans-serif", fontSize:20,
+                background: selNum===num ? "#f59e0b" : "rgba(255,255,255,0.07)",
+                color: selNum===num ? "#000" : "rgba(255,255,255,0.7)",
+                transition:"all 0.15s",
+              }}>{num}</button>
+            ))}
+          </div>
+        </div>
+
+        {selNum && (
+          <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+            {MULTIPLIERS.map(m => (
+              <button key={m.label} onClick={() => { addDart(selNum * m.value, m.label + selNum, m.label); setSelNum(null); }}
+                style={{
+                  flex:1, padding:"12px 0", borderRadius:10, border:"none", cursor:"pointer",
+                  background: m.label==="S" ? "rgba(255,255,255,0.1)" : m.label==="D" ? "rgba(245,158,11,0.25)" : "rgba(239,68,68,0.25)",
+                  color: m.color, fontWeight:700, fontSize:16, fontFamily:"'Bebas Neue', sans-serif", letterSpacing:2,
+                }}>
+                {m.label} × {selNum} = {selNum * m.value}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+          <button onClick={() => { addDart(25, "S-BULL", "S"); setSelNum(null); }} style={{
+            flex:1, padding:"12px 0", borderRadius:10, border:"none", cursor:"pointer",
+            background:"rgba(16,185,129,0.2)", color:"#10b981", fontWeight:700, fontSize:15,
+            fontFamily:"'Bebas Neue', sans-serif", letterSpacing:1,
+          }}>S-BULL</button>
+          <button onClick={() => { addDart(50, "D-BULL", "D"); setSelNum(null); }} style={{
+            flex:1, padding:"12px 0", borderRadius:10, border:"none", cursor:"pointer",
+            background:"rgba(16,185,129,0.35)", color:"#10b981", fontWeight:700, fontSize:15,
+            fontFamily:"'Bebas Neue', sans-serif", letterSpacing:1,
+          }}>D-BULL</button>
+          <button onClick={() => { addDart(0, "MISS", "S"); setSelNum(null); }} style={{
+            flex:1, padding:"12px 0", borderRadius:10, border:"none", cursor:"pointer",
+            background:"rgba(255,255,255,0.04)", color:"rgba(255,255,255,0.35)", fontWeight:700, fontSize:15,
+            fontFamily:"'Bebas Neue', sans-serif", letterSpacing:1,
+          }}>MISS</button>
+        </div>
+
+        <div style={{ display:"flex", gap:8, paddingBottom:24 }}>
+          <button onClick={undoLastDart} disabled={roundDarts.length===0}
+            style={{
+              flex:1, padding:"12px 0", borderRadius:10, border:"1px solid rgba(255,255,255,0.1)",
+              background:"transparent", color:"rgba(255,255,255,0.5)", cursor:"pointer",
+              fontWeight:600, fontSize:14, opacity: roundDarts.length===0 ? 0.3 : 1,
+            }}>Undo Dart</button>
+          <button onClick={bust} style={{
+            flex:1, padding:"12px 0", borderRadius:10, border:"none",
+            background:"rgba(239,68,68,0.2)", color:"#ef4444", cursor:"pointer", fontWeight:700, fontSize:14,
+          }}>BUST</button>
+          <button onClick={confirmRound} style={{
+            flex:2, padding:"12px 0", borderRadius:12, border:"none",
+            background: roundDarts.length > 0 ? "linear-gradient(135deg, #f59e0b, #d97706)" : "rgba(255,255,255,0.06)",
+            color: roundDarts.length > 0 ? "#000" : "rgba(255,255,255,0.3)",
+            cursor:"pointer", fontWeight:700, fontSize:15,
+          }}>CONFIRM ✓</button>
+        </div>
+      </>}
+
+      {winner !== null && (
+        <div style={{ textAlign:"center", padding:24 }}>
+          <div style={{ fontSize:48 }}>🎯</div>
+          <h2 style={{ color:"#f59e0b", fontFamily:"'Bebas Neue', sans-serif", fontSize:32 }}>{names[winner]} WINS!</h2>
+          <button onClick={onBack} style={{
+            padding:"12px 32px", borderRadius:10, border:"none",
+            background:"#f59e0b", color:"#000", fontWeight:700, cursor:"pointer", fontSize:16, marginTop:8,
+          }}>New Game</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
+   Cricket Game
+   ═══════════════════════════════════════ */
+function CricketGame({ names, onBack }) {
+  const n = names.length;
+  const [state, setState] = useState(initCricketState(n));
+  const [turn, setTurn] = useState(0);
+  const [roundDarts, setRoundDarts] = useState([]);
+  const [globalHistory, setGlobalHistory] = useState([]);
+  const [winner, setWinner] = useState(null);
+
+  const addMark = useCallback((target, multiplier, label) => {
+    if (roundDarts.length >= 3 || winner !== null) return;
+    setRoundDarts(prev => [...prev, { target, multiplier, label }]);
+  }, [roundDarts, winner]);
+
+  const undoLastDart = () => {
+    if (roundDarts.length > 0) setRoundDarts(prev => prev.slice(0, -1));
+  };
+
+  const confirmRound = () => {
+    const snapshot = JSON.parse(JSON.stringify(state));
+    const newState = JSON.parse(JSON.stringify(state));
+    const player = newState[turn];
+
+    for (const dart of roundDarts) {
+      if (dart.target === "MISS") continue;
+      const tgt = dart.target;
+      const prev = player.marks[tgt];
+      const added = dart.multiplier;
+      const newMarks = prev + added;
+      player.marks[tgt] = newMarks;
+      if (newMarks > 3) {
+        const excess = newMarks - Math.max(prev, 3);
+        if (excess > 0) {
+          const allClosed = newState.every((p, i) => i === turn || p.marks[tgt] >= 3);
+          if (!allClosed) {
+            const pointVal = tgt === "BULL" ? 25 : Number(tgt);
+            player.points += excess * pointVal;
+          }
+        }
+      }
+    }
+
+    setGlobalHistory(prev => [...prev, { player: turn, prevState: snapshot, darts: [...roundDarts] }]);
+    setState(newState);
+
+    const allClosed = CRICKET_NUMBERS.every(num => player.marks[num] >= 3);
+    const highestPoints = newState.every((p, i) => i === turn || p.points <= player.points);
+    if (allClosed && highestPoints) { setWinner(turn); } else { setTurn((turn + 1) % n); }
+    setRoundDarts([]);
+  };
+
+  const undoRound = () => {
+    if (globalHistory.length === 0) return;
+    const last = globalHistory[globalHistory.length - 1];
+    setState(last.prevState);
+    setGlobalHistory(prev => prev.slice(0, -1));
+    setTurn(last.player); setRoundDarts([]); setWinner(null);
+  };
+
+  const markSymbol = (count) => {
+    if (count === 0) return "";
+    if (count === 1) return "/";
+    if (count === 2) return "✕";
+    return "⊛";
+  };
+
+  return (
+    <div style={gameContainer}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+        <button onClick={onBack} style={backBtn}>← Back</button>
+        <h2 style={gameTitle}>CRICKET</h2>
+        <button onClick={undoRound} disabled={globalHistory.length===0}
+          style={{ ...backBtn, opacity: globalHistory.length===0 ? 0.3 : 1 }}>↩ Undo</button>
+      </div>
+
+      {/* Cricket Scoreboard */}
+      <div style={{
+        background:"rgba(255,255,255,0.03)", borderRadius:14, overflow:"hidden",
+        border:"1px solid rgba(255,255,255,0.08)", marginBottom:16,
+      }}>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead>
+            <tr>
+              <th style={thStyle}></th>
+              {names.map((name, i) => (
+                <th key={i} style={{
+                  ...thStyle,
+                  color: turn===i ? "#f59e0b" : "rgba(255,255,255,0.5)",
+                  background: turn===i ? "rgba(245,158,11,0.1)" : "transparent",
+                }}>{name}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {CRICKET_NUMBERS.map(num => (
+              <tr key={num}>
+                <td style={{
+                  ...tdStyle, fontFamily:"'Bebas Neue', sans-serif", fontSize:20,
+                  color:"rgba(255,255,255,0.7)", textAlign:"center", width:50,
+                }}>{num === "BULL" ? "🎯" : num}</td>
+                {names.map((_, i) => {
+                  const marks = state[i].marks[num];
+                  return (
+                    <td key={i} style={{
+                      ...tdStyle, textAlign:"center",
+                      fontSize: marks >= 3 ? 22 : 18,
+                      color: marks >= 3 ? "#10b981" : marks > 0 ? "#f59e0b" : "rgba(255,255,255,0.15)",
+                      background: turn===i ? "rgba(245,158,11,0.05)" : "transparent",
+                    }}>{markSymbol(marks)}{marks > 3 ? " +" + (marks-3) : ""}</td>
+                  );
+                })}
+              </tr>
+            ))}
+            <tr>
+              <td style={{ ...tdStyle, textAlign:"center", color:"rgba(255,255,255,0.4)", fontSize:11 }}>PTS</td>
+              {names.map((_, i) => (
+                <td key={i} style={{
+                  ...tdStyle, textAlign:"center",
+                  fontFamily:"'Bebas Neue', sans-serif", fontSize:24, color:"#fff",
+                  background: turn===i ? "rgba(245,158,11,0.05)" : "transparent",
+                }}>{state[i].points}</td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Current Round */}
+      <div style={{
+        background:"rgba(255,255,255,0.04)", borderRadius:14, padding:"12px 16px",
+        marginBottom:16, border:"1px solid rgba(255,255,255,0.08)",
+      }}>
+        <div style={{ color:"#f59e0b", fontSize:13, fontWeight:600, marginBottom:8 }}>
+          {names[turn]}'s Turn — Dart {Math.min(roundDarts.length + 1, 3)}/3
+        </div>
+        <div style={{ display:"flex", gap:6, minHeight:32 }}>
+          {roundDarts.map((d, i) => (
+            <div key={i} style={{
+              background:"rgba(245,158,11,0.2)", borderRadius:8, padding:"6px 12px",
+              color:"#f59e0b", fontSize:14, fontWeight:600,
+            }}>{d.label}</div>
+          ))}
+        </div>
+      </div>
+
+      {winner === null && <>
+        <div style={{ marginBottom:12 }}>
+          {CRICKET_NUMBERS.filter(n => n !== "BULL").map(num => (
+            <div key={num} style={{ display:"flex", gap:6, marginBottom:6 }}>
+              <div style={{
+                width:40, display:"flex", alignItems:"center", justifyContent:"center",
+                color:"rgba(255,255,255,0.5)", fontFamily:"'Bebas Neue', sans-serif", fontSize:18,
+              }}>{num}</div>
+              {MULTIPLIERS.map(m => (
+                <button key={m.label} onClick={() => addMark(num, m.value, m.label + num)}
+                  disabled={roundDarts.length >= 3}
+                  style={{
+                    flex:1, padding:"8px 0", borderRadius:8, border:"none", cursor:"pointer",
+                    background: m.label==="S" ? "rgba(255,255,255,0.07)" : m.label==="D" ? "rgba(245,158,11,0.15)" : "rgba(239,68,68,0.15)",
+                    color: m.color, fontWeight:600, fontSize:13,
+                    opacity: roundDarts.length >= 3 ? 0.3 : 1,
+                  }}>{m.label}</button>
+              ))}
+            </div>
+          ))}
+          <div style={{ display:"flex", gap:6, marginTop:8 }}>
+            <div style={{ width:40, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🎯</div>
+            <button onClick={() => addMark("BULL", 1, "S-BULL")} disabled={roundDarts.length >= 3}
+              style={{
+                flex:1, padding:"8px 0", borderRadius:8, border:"none", cursor:"pointer",
+                background:"rgba(16,185,129,0.15)", color:"#10b981", fontWeight:600, fontSize:13,
+                opacity: roundDarts.length >= 3 ? 0.3 : 1,
+              }}>S-BULL</button>
+            <button onClick={() => addMark("BULL", 2, "D-BULL")} disabled={roundDarts.length >= 3}
+              style={{
+                flex:1, padding:"8px 0", borderRadius:8, border:"none", cursor:"pointer",
+                background:"rgba(16,185,129,0.25)", color:"#10b981", fontWeight:600, fontSize:13,
+                opacity: roundDarts.length >= 3 ? 0.3 : 1,
+              }}>D-BULL</button>
+            <button onClick={() => addMark("MISS", 0, "MISS")} disabled={roundDarts.length >= 3}
+              style={{
+                flex:1, padding:"8px 0", borderRadius:8, border:"none", cursor:"pointer",
+                background:"rgba(255,255,255,0.04)", color:"rgba(255,255,255,0.3)", fontWeight:600, fontSize:13,
+                opacity: roundDarts.length >= 3 ? 0.3 : 1,
+              }}>MISS</button>
+          </div>
+        </div>
+
+        <div style={{ display:"flex", gap:8, paddingBottom:24 }}>
+          <button onClick={undoLastDart} disabled={roundDarts.length===0}
+            style={{
+              flex:1, padding:"12px 0", borderRadius:10, border:"1px solid rgba(255,255,255,0.1)",
+              background:"transparent", color:"rgba(255,255,255,0.5)", cursor:"pointer",
+              fontWeight:600, fontSize:14, opacity: roundDarts.length===0 ? 0.3 : 1,
+            }}>Undo Dart</button>
+          <button onClick={confirmRound} style={{
+            flex:2, padding:"12px 0", borderRadius:12, border:"none",
+            background: roundDarts.length > 0 ? "linear-gradient(135deg, #f59e0b, #d97706)" : "rgba(255,255,255,0.06)",
+            color: roundDarts.length > 0 ? "#000" : "rgba(255,255,255,0.3)",
+            cursor:"pointer", fontWeight:700, fontSize:15,
+          }}>CONFIRM ✓</button>
+        </div>
+      </>}
+
+      {winner !== null && (
+        <div style={{ textAlign:"center", padding:24 }}>
+          <div style={{ fontSize:48 }}>🎯</div>
+          <h2 style={{ color:"#f59e0b", fontFamily:"'Bebas Neue', sans-serif", fontSize:32 }}>{names[winner]} WINS!</h2>
+          <button onClick={onBack} style={{
+            padding:"12px 32px", borderRadius:10, border:"none",
+            background:"#f59e0b", color:"#000", fontWeight:700, cursor:"pointer", fontSize:16, marginTop:8,
+          }}>New Game</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
+   Main App
+   ═══════════════════════════════════════ */
+function DartsApp() {
+  const [config, setConfig] = useState(null);
+  if (!config) return <SetupScreen onStart={setConfig} />;
+  const handleBack = () => setConfig(null);
+  if (config.game === "Cricket") return <CricketGame names={config.names} onBack={handleBack} />;
+  return <X01Game startScore={Number(config.game)} names={config.names} onBack={handleBack} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<DartsApp />);
+</script>
+</body>
+</html>
